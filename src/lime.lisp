@@ -4,12 +4,14 @@
   (:import-from :trivial-types
                 :association-list
                 :proper-list)
+  (:import-from :swank-protocol
+                :connect)
   ;; Classes
   (:export :connection
            :event
            :write-string-event
            :switch-package-event
-           :debugger)
+           :debugger-event)
   ;; Accessors
   (:export :connection-debug-level
            :event-string
@@ -17,16 +19,13 @@
            :event-short-name
            :event-restarts
            :event-call-stack)
-  ;; Functions
-  (:export :pull-all-events)
+  ;; Functions and methods
+  (:export :make-connection
+           :connect
+           :pull-all-events
+           :debuggerp)
   (:documentation "A high-level Swank client."))
 (in-package :lime)
-
-(defun parse-response (response)
-  "Parse a response from read-event into a more manageable format."
-  (list :status (first (second response))
-        :value (second (second response))
-        :request-id (first (last response))))
 
 ;;; Classes
 
@@ -34,8 +33,28 @@
   ((debug-level :accessor connection-debug-level
                 :initform 0
                 :type integer
-                :documentation "The depth at which the debugger is called."))
-  (:documentation "A connectio to a Swank server."))
+                :documentation "The depth at which the debugger is called.")
+   (server-pid :accessor connection-server-pid
+               :type integer
+               :documentation "The PID of the Swank server process.")
+   (server-impl-name :accessor connection-server-impl-name
+                     :type string
+                     :documentation "The name of the implementation running the
+ Swank server.")
+   (server-impl-version :accessor connection-server-impl-version
+                        :type string
+                        :documentation "The version string of the implementation
+ running the Swank server.")
+   (server-machine-type :accessor connection-server-machine-type
+                        :type string
+                        :documentation "The server machine's architecture.")
+   (server-machine-version :accessor connection-server-machine-version
+                           :type string
+                           :documentation "The server machine's processor type.")
+   (server-swank-version :accessor connection-server-swank-version
+                         :type string
+                         :documentation "The server's Swank version."))
+  (:documentation "A connection to a Swank server."))
 
 (defclass event ()
   ()
@@ -74,14 +93,9 @@
    (call-stack :reader event-call-stack
                :initarg :call-stack
                :type (association-list integer string)
-               :documentation "An association list of a stack frame's position to its description."))
+               :documentation "An association list of a stack frame's position
+ to its description."))
   (:documentation "Signals that the debugger has been entered."))
-
-;;; Functions and methods
-
-(defun debuggerp (connection)
-  "T if the session is in the debugger, NIL otherwise."
-  (> (connection-debug-level connection) 0))
 
 ;;; Parsing messages into events
 
@@ -121,9 +135,56 @@ of event, or return NIL."
      (declare (ignore rest))
      nil)))
 
+;;; Functions and methods
+
+(defun make-connection (hostname port)
+  "Create a connection object."
+  (make-instance 'connection
+                 :hostname hostname
+                 :port port))
+
+(defmethod connect :after ((connection connection))
+  "After connecting, query the Swank server for connection information and
+create a REPL."
+  ;; Issue every request
+  (swank-protocol:request-connection-info connection)
+  (swank-protocol:request-swank-require connection
+                                        '(slime-presentations slime-repl))
+  (swank-protocol:request-init-presentations connection)
+  (swank-protocol:request-create-repl connection)
+  ;; Read the connection information message
+  (let* ((info (swank-protocol:read-message connection))
+         (data (getf (getf info :return) :ok))
+         (impl (getf data :implementation))
+         (machine (getf data :machine))
+         (machine-type (getf machine :type)))
+    (setf (connection-server-pid connection)
+          (getf data :pid)
+
+          (connection-server-impl-name connection)
+          (getf impl :name)
+
+          (connection-server-impl-version connection)
+          (getf impl :version)
+
+          (connection-server-machine-type connection)
+          (getf machine :type)
+
+          (connection-server-machine-version connection)
+          (getf machine :version)
+
+          (connection-server-version connection)
+          (getf data :version)))
+  ;; Read all the other messages, dumping them
+  (swank-protocol:read-all-messages connection))
+
 (defun pull-all-events (connection)
   "Return a list of all events from the connection."
   (let ((messages (swank-protocol:read-all-messages connection)))
     (remove-if #'null
                (loop for message in messages collecting
                  (parse-event connection message)))))
+
+(defun debuggerp (connection)
+  "T if the connection is in the debugger, NIL otherwise."
+  (> (connection-debug-level connection) 0))
