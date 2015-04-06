@@ -148,16 +148,11 @@ of event, or return NIL."
 create a REPL."
   ;; Issue every request
   (swank-protocol:request-connection-info connection)
-  (swank-protocol:request-swank-require connection
-                                        '(slime-presentations slime-repl))
-  (swank-protocol:request-init-presentations connection)
-  (swank-protocol:request-create-repl connection)
   ;; Read the connection information message
   (let* ((info (swank-protocol:read-message connection))
          (data (getf (getf info :return) :ok))
-         (impl (getf data :implementation))
-         (machine (getf data :machine))
-         (machine-type (getf machine :type)))
+         (impl (getf data :lisp-implementation))
+         (machine (getf data :machine)))
     (setf (connection-server-pid connection)
           (getf data :pid)
 
@@ -173,8 +168,15 @@ create a REPL."
           (connection-server-machine-version connection)
           (getf machine :version)
 
-          (connection-server-version connection)
+          (connection-server-swank-version connection)
           (getf data :version)))
+  ;; Require some Swank modules
+  (swank-protocol:request-swank-require connection
+                                        '(swank-presentations swank-repl))
+  (swank-protocol:read-message connection)
+  ;; Start it up
+  (swank-protocol:request-init-presentations connection)
+  (swank-protocol:request-create-repl connection)
   ;; Read all the other messages, dumping them
   (swank-protocol:read-all-messages connection))
 
