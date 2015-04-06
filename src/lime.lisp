@@ -5,25 +5,39 @@
                 :association-list
                 :proper-list)
   (:import-from :swank-protocol
-                :connect)
+                :connect
+                :connection-package)
   ;; Classes
   (:export :connection
            :event
            :write-string-event
            :switch-package-event
-           :debugger-event)
+           :debugger-event
+           :read-string-event)
   ;; Accessors
-  (:export :connection-debug-level
+  (:export :connection-package
+           :connection-debug-level
+           :connection-reader-waiting-p
+           :connection-pid
+           :connection-implementation-name
+           :connection-implementation-version
+           :connection-machine-type
+           :connection-machine-version
+           :connection-swank-version
            :event-string
            :event-package-name
-           :event-short-name
+           :event-prompt-string
+           :event-condition
            :event-restarts
            :event-call-stack)
   ;; Functions and methods
   (:export :make-connection
            :connect
            :pull-all-events
-           :debuggerp)
+           :debuggerp
+           :evaluate
+           :send-input
+           :abort-debugger)
   (:documentation "A high-level Swank client."))
 (in-package :lime)
 
@@ -34,26 +48,31 @@
                 :initform 0
                 :type integer
                 :documentation "The depth at which the debugger is called.")
-   (server-pid :accessor connection-server-pid
-               :type integer
-               :documentation "The PID of the Swank server process.")
-   (server-impl-name :accessor connection-server-impl-name
-                     :type string
-                     :documentation "The name of the implementation running the
- Swank server.")
-   (server-impl-version :accessor connection-server-impl-version
+   (reader-waiting :accessor connection-reader-waiting-p
+                   :initform nil
+                   :type boolean
+                   :documentation "Whether or not the server is waiting for
+ input on standard input.")
+   (pid :accessor connection-pid
+        :type integer
+        :documentation "The PID of the Swank server process.")
+   (implementation-name :accessor connection-implementation-name
                         :type string
-                        :documentation "The version string of the implementation
- running the Swank server.")
-   (server-machine-type :accessor connection-server-machine-type
-                        :type string
-                        :documentation "The server machine's architecture.")
-   (server-machine-version :accessor connection-server-machine-version
+                        :documentation "The name of the implementation running
+ the Swank server.")
+   (implementation-version :accessor connection-implementation-version
                            :type string
-                           :documentation "The server machine's processor type.")
-   (server-swank-version :accessor connection-server-swank-version
-                         :type string
-                         :documentation "The server's Swank version."))
+                           :documentation "The version string of the
+ implementation running the Swank server.")
+   (machine-type :accessor connection-machine-type
+                 :type string
+                 :documentation "The server machine's architecture.")
+   (machine-version :accessor connection-machine-version
+                    :type string
+                    :documentation "The server machine's processor type.")
+   (swank-version :accessor connection-swank-version
+                  :type string
+                  :documentation "The server's Swank version."))
   (:documentation "A connection to a Swank server."))
 
 (defclass event ()
@@ -81,7 +100,7 @@
   (:documentation "An event that indicates the inferior Lisp has changed its
   current package."))
 
-(defclass debugger (event)
+(defclass debugger-event (event)
   ((condition :reader event-condition
               :initarg :condition
               :type (proper-list string)
@@ -97,51 +116,88 @@
  to its description."))
   (:documentation "Signals that the debugger has been entered."))
 
+(defclass read-string-event (event)
+  ()
+  (:documentation "Signals that the server is waiting for input."))
+
+;;; Printing events
+
+(defmethod print-object ((event write-string-event) stream)
+  "Print a write-string event."
+  (print-unreadable-object (event stream :type t)
+    (format stream "~S" (event-string event))))
+
+(defmethod print-object ((event switch-package-event) stream)
+  "Print a switch-package event."
+  (print-unreadable-object (event stream :type t)
+    (format stream "~S (~S)"
+            (event-package-name event)
+            (event-prompt-string event))))
+
+(defmethod print-object ((event debugger-event) stream)
+  "Print a debugger event."
+  (print-unreadable-object (event stream :type t)
+    (format stream "~{~A ~}, ~D restarts, ~D stack frames"
+            (event-condition event)
+            (length (event-restarts event))
+            (length (event-call-stack event)))))
+
 ;;; Parsing messages into events
 
 (defun parse-event (connection message)
   "Parse a swank-protocol message S-expression into a an instance of a subclass
 of event, or return NIL."
   (alexandria:destructuring-case message
-    ((:write-string string)
+    ((:write-string string &rest rest)
+     (declare (ignore rest))
      ;; Write a string to the REPL's output
      (make-instance 'write-string-event
                     :string string))
     ((:new-package name prompt-string)
      ;; Change the REPL package
+     (setf (swank-protocol:connection-package connection)
+           name)
      (make-instance 'switch-package-event
                     :package-name name
                     :prompt-string prompt-string))
+    ;; Debugger
     ((:debug thread level condition restarts frames continuations)
      ;; Parse debugging information
      (declare (ignore level thread continuations))
-     (make-instance 'debug
+     (make-instance 'debugger-event
                     :condition (remove-if #'null condition)
                     :restarts (loop for restart in restarts collecting
                                 (cons (first restart) (second restart)))
                     :call-stack (loop for frame in frames collecting
                                   (cons (first frame) (second frame)))))
-    ((:debug-activate x y z)
+    ((:debug-activate &rest rest)
      ;; Entered the debugger
-     (declare (ignore x y z))
+     (declare (ignore rest))
      (incf (connection-debug-level connection))
      nil)
-    ((:debug-return x y z)
+    ((:debug-return &rest rest)
      ;; Left the debugger
-     (declare (ignore x y z))
+     (declare (ignore rest))
      (decf (connection-debug-level connection))
      nil)
+    ;; Standard input reading
+    ((:read-string &rest rest)
+     (declare (ignore rest))
+     (setf (connection-reader-waiting-p connection) t)
+     (make-instance 'read-string-event))
+    ;; Else
     ((t &rest rest)
      (declare (ignore rest))
      nil)))
 
 ;;; Functions and methods
 
-(defun make-connection (hostname port)
+(defun make-connection (hostname port &key logp)
   "Create a connection object."
   (make-instance 'connection
                  :hostname hostname
-                 :port port))
+                 :port port
+                 :logp logp))
 
 (defmethod connect :after ((connection connection))
   "After connecting, query the Swank server for connection information and
@@ -153,22 +209,22 @@ create a REPL."
          (data (getf (getf info :return) :ok))
          (impl (getf data :lisp-implementation))
          (machine (getf data :machine)))
-    (setf (connection-server-pid connection)
+    (setf (connection-pid connection)
           (getf data :pid)
 
-          (connection-server-impl-name connection)
+          (connection-implementation-name connection)
           (getf impl :name)
 
-          (connection-server-impl-version connection)
+          (connection-implementation-version connection)
           (getf impl :version)
 
-          (connection-server-machine-type connection)
+          (connection-machine-type connection)
           (getf machine :type)
 
-          (connection-server-machine-version connection)
+          (connection-machine-version connection)
           (getf machine :version)
 
-          (connection-server-swank-version connection)
+          (connection-swank-version connection)
           (getf data :version)))
   ;; Require some Swank modules
   (swank-protocol:request-swank-require connection
@@ -177,6 +233,8 @@ create a REPL."
   ;; Start it up
   (swank-protocol:request-init-presentations connection)
   (swank-protocol:request-create-repl connection)
+  ;; Wait for startup
+  (swank-protocol:read-message connection)
   ;; Read all the other messages, dumping them
   (swank-protocol:read-all-messages connection))
 
@@ -190,3 +248,21 @@ create a REPL."
 (defun debuggerp (connection)
   "T if the connection is in the debugger, NIL otherwise."
   (> (connection-debug-level connection) 0))
+
+(defun evaluate (connection string)
+  "Send a string to the Swank server for evaluation."
+  (swank-protocol:request-listener-eval connection string)
+  string)
+
+(defun send-input (connection string)
+  "Send a string to the Swank server's standard input."
+  (when (connection-reader-waiting-p connection)
+    (swank-protocol:request-input-string-newline connection string)
+    (setf (connection-reader-waiting-p connection) nil)
+    string))
+
+(defun abort-debugger (connection)
+  "Leave the debugger."
+  (when (debuggerp connection)
+    (swank-protocol:request-throw-to-toplevel connection)
+    t))
