@@ -4,7 +4,7 @@
 
 [![Build Status](https://travis-ci.org/eudoxia0/lime.svg?branch=master)](https://travis-ci.org/eudoxia0/lime)
 
-A [Swank][swank] client for Common Lisp applications, built on
+A Swank ([SLIME][slime]) client for Common Lisp applications, built on
 [swank-protocol][swank-protocol].
 
 # Usage
@@ -35,8 +35,8 @@ COMMON-LISP-USER>
 Like SLIME, but without the leading S. No relation to
 [the text editor][lime-text].
 
-[swank]: url
-[swank-protocol]: url
+[slime]: https://github.com/slime/slime
+[swank-protocol]: https://github.com/eudoxia0/swank-protocol
 [lime-text]: http://limetext.org/
 
 # License
