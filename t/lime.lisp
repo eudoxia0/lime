@@ -94,7 +94,9 @@
               2))
       (is
        (equal (lime:event-string (first events))
-              "4")))))
+              "4"))
+      (finishes
+       (print (first events))))))
 
 (test debugger
   (with-connection (conn)
@@ -111,7 +113,9 @@
               1))
       (let ((debug (first events)))
         (is
-         (typep debug 'lime:debugger-event))))
+         (typep debug 'lime:debugger-event))
+        (finishes
+         (print debug))))
     ;; Check debug level
     (is-true
       (lime:debuggerp conn))
@@ -174,6 +178,8 @@
       (let ((switch (first (last events))))
         (is
          (typep switch 'lime:switch-package-event))
+        (finishes
+         (print switch))
         (is
          (equal (lime:event-package-name switch)
                 "NEW.PACK"))
