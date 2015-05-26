@@ -3,6 +3,7 @@
 # Lime
 
 [![Build Status](https://travis-ci.org/eudoxia0/lime.svg?branch=master)](https://travis-ci.org/eudoxia0/lime)
+[![Coverage Status](https://coveralls.io/repos/eudoxia0/lime/badge.svg?branch=master)](https://coveralls.io/r/eudoxia0/lime?branch=master)
 
 A Swank ([SLIME][slime]) client for Common Lisp applications, built on
 [swank-protocol][swank-protocol].
