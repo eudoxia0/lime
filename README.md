@@ -6,7 +6,9 @@
 [![Coverage Status](https://coveralls.io/repos/eudoxia0/lime/badge.svg?branch=master)](https://coveralls.io/r/eudoxia0/lime?branch=master)
 
 A Swank ([SLIME][slime]) client for Common Lisp applications, built on
-[swank-protocol][swank-protocol].
+[swank-protocol][swank-protocol]. It can be used to connect to a remote or local
+Swank server, evaluate code, and receive responses for printing to the screen,
+handling debugger events, etc.
 
 # Usage
 
