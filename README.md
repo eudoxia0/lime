@@ -1,6 +1,6 @@
 # Lime
 
-A [Swank][swamk] client for Common Lisp applications, built on
+A [Swank][swank] client for Common Lisp applications, built on
 [swank-protocol][swank-protocol].
 
 # Usage
