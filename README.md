@@ -1,5 +1,7 @@
 # Lime
 
+[![Build Status](https://travis-ci.org/eudoxia0/lime.svg?branch=master)](https://travis-ci.org/eudoxia0/lime)
+
 A [Swank][swank] client for Common Lisp applications, built on
 [swank-protocol][swank-protocol].
 
