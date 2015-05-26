@@ -2,8 +2,9 @@
   :author "Fernando Borretti <eudoxiahp@gmail.com>"
   :license "MIT"
   :depends-on (:lime
-               :fiveam
-               :inferior-lisp)
+               :external-program
+               :alexandria
+               :fiveam)
   :components ((:module "t"
                 :serial t
                 :components
