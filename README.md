@@ -4,6 +4,7 @@
 
 [![Build Status](https://travis-ci.org/eudoxia0/lime.svg?branch=master)](https://travis-ci.org/eudoxia0/lime)
 [![Coverage Status](https://coveralls.io/repos/eudoxia0/lime/badge.svg?branch=master)](https://coveralls.io/r/eudoxia0/lime?branch=master)
+[![Quicklisp](http://quickdocs.org/badge/lime.svg)](http://quickdocs.org/lime/)
 
 A Swank ([SLIME][slime]) client for Common Lisp applications, built on
 [swank-protocol][swank-protocol]. It can be used to connect to a remote or local
