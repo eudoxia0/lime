@@ -30,21 +30,33 @@
               ,@body)
          (swank:stop-server ,port)))))
 
+(defun ping-response (conn event)
+  (swank-protocol:send-message-string conn
+  				      (format nil
+				      	      "(:emacs-pong ~A ~A)"
+					      (lime:event-thread event)
+					      (lime:event-tag event))))
+
 (defun repl ()
   "Start the REPL."
   (with-swank-connection (conn *port*)
     (loop
-      ;; Read all events
-      (sleep 0.05)
-      (let ((events (lime:pull-all-events conn)))
-        (loop for event in events do
-          (typecase event
-            (lime:write-string-event
-             (write-string (lime:event-string event)))
-            (lime:debugger-event
-             (write-string "Entered debugger!"))
-            (t
-             t))))
+      (tagbody t
+        ;; Read all events
+        (sleep 0.05)
+        (let ((events (lime:pull-all-events conn)))
+          (loop for event in events do
+            (typecase event
+              (lime:write-string-event
+               (write-string (lime:event-string event)))
+              (lime:debugger-event
+               (write-string "Entered debugger!"))
+	      (lime:ping-event
+	       (ping-response conn event)
+	       ;; loop back around to catch any events after the ping response.
+	       (go t))
+              (t
+               t)))))
       ;; Take input
       (if (lime:connection-reader-waiting-p conn)
           ;; Read a line to send as standard input
