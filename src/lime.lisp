@@ -13,7 +13,8 @@
            :write-string-event
            :switch-package-event
            :debugger-event
-           :read-string-event)
+           :read-string-event
+	   :ping-event)
   ;; Accessors
   (:export :connection-package
            :connection-debug-level
@@ -29,7 +30,9 @@
            :event-prompt-string
            :event-condition
            :event-restarts
-           :event-call-stack)
+           :event-call-stack
+	   :event-thread
+	   :event-tag)
   ;; Functions and methods
   (:export :make-connection
            :connect
@@ -116,6 +119,20 @@
  to its description."))
   (:documentation "Signals that the debugger has been entered."))
 
+(defclass ping-event ()
+   ((thread :reader event-thread
+	    :initarg :thread
+	    :type string
+	    ;; TODO: finish documentation.
+	    :documentation "")
+    (tag :reader event-tag
+	 :initarg :tag
+	 :type string
+	 ;; TODO: finish documentation.
+	 :documentation ""))
+   (:documentation "An event that checks if the client is still alive.
+   		   When this event is recieved, Swank waits until it recieves (:PONG thread tag)"))
+
 (defclass read-string-event (event)
   ()
   (:documentation "Signals that the server is waiting for input."))
@@ -185,6 +202,10 @@ of event, or return NIL."
      (declare (ignore rest))
      (setf (connection-reader-waiting-p connection) t)
      (make-instance 'read-string-event))
+    ;; Ping
+    ((:ping thread tag &rest rest)
+     (declare (ignore rest))
+     (make-instance 'ping-event :thread thread :tag tag))
     ;; Else
     ((t &rest rest)
      (declare (ignore rest))
